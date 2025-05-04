@@ -1,27 +1,28 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useData } from '../contexts/DataContext';
-import { QrCode, CheckCircle, XCircle, SearchIcon } from 'lucide-react';
+import { QrCode, CheckCircle, XCircle, Camera, SearchIcon } from 'lucide-react';
+import { Html5QrcodeScanner } from 'html5-qrcode';
 import toast from 'react-hot-toast';
 
 const QrCodeValidator: React.FC = () => {
   const [qrCodeId, setQrCodeId] = useState('');
+  const [showScanner, setShowScanner] = useState(false);
   const [validationResult, setValidationResult] = useState<{
     isValid: boolean;
     message: string;
     qrCode?: any;
   } | null>(null);
   const { validateQrCode, getQrCodeById } = useData();
+  const scannerRef = useRef<any>(null);
 
-  const handleValidate = (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!qrCodeId.trim()) {
+  const handleValidate = (id: string) => {
+    if (!id.trim()) {
       toast.error('Please enter a QR code ID');
       return;
     }
     
-    const result = validateQrCode(qrCodeId.trim());
-    const qrCode = getQrCodeById(qrCodeId.trim());
+    const result = validateQrCode(id.trim());
+    const qrCode = getQrCodeById(id.trim());
     
     setValidationResult({
       ...result,
@@ -30,53 +31,110 @@ const QrCodeValidator: React.FC = () => {
     
     // Clear input after validation
     setQrCodeId('');
+    
+    // Stop scanner if it's running
+    if (scannerRef.current) {
+      scannerRef.current.clear();
+      setShowScanner(false);
+    }
   };
 
   const resetValidation = () => {
     setValidationResult(null);
+    setShowScanner(false);
+    if (scannerRef.current) {
+      scannerRef.current.clear();
+    }
+  };
+
+  const startScanner = () => {
+    setShowScanner(true);
+    setValidationResult(null);
+
+    // Small delay to ensure DOM is ready
+    setTimeout(() => {
+      scannerRef.current = new Html5QrcodeScanner(
+        "qr-reader",
+        { fps: 10, qrbox: { width: 250, height: 250 } },
+        false
+      );
+
+      scannerRef.current.render((decodedText: string) => {
+        handleValidate(decodedText);
+      }, (error: any) => {
+        console.error(error);
+      });
+    }, 100);
   };
 
   return (
     <div className="bg-white p-6 rounded-lg shadow-md">
-      {!validationResult ? (
+      {!validationResult && !showScanner ? (
         <>
           <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
             <QrCode size={24} className="mr-2 text-blue-600" />
             Validate QR Code
           </h2>
           
-          <form onSubmit={handleValidate} className="space-y-4">
-            <div>
-              <label htmlFor="qrCodeId" className="block text-sm font-medium text-gray-700 mb-1">
-                QR Code ID
-              </label>
-              <input
-                type="text"
-                id="qrCodeId"
-                value={qrCodeId}
-                onChange={(e) => setQrCodeId(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Enter QR code ID"
-              />
-            </div>
+          <div className="space-y-4">
+            <form onSubmit={(e) => { e.preventDefault(); handleValidate(qrCodeId); }} className="space-y-4">
+              <div>
+                <label htmlFor="qrCodeId" className="block text-sm font-medium text-gray-700 mb-1">
+                  QR Code ID
+                </label>
+                <input
+                  type="text"
+                  id="qrCodeId"
+                  value={qrCodeId}
+                  onChange={(e) => setQrCodeId(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Enter QR code ID"
+                />
+              </div>
+              
+              <div className="flex gap-2">
+                <button
+                  type="submit"
+                  className="flex-1 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md transition duration-300"
+                >
+                  <SearchIcon size={20} />
+                  Validate
+                </button>
+                
+                <button
+                  type="button"
+                  onClick={startScanner}
+                  className="flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-md transition duration-300"
+                >
+                  <Camera size={20} />
+                  Scan QR
+                </button>
+              </div>
+            </form>
             
-            <div>
-              <button
-                type="submit"
-                className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md transition duration-300"
-              >
-                <SearchIcon size={20} />
-                Validate
-              </button>
+            <div className="mt-6">
+              <p className="text-sm text-gray-600">
+                Enter the QR code ID or scan it using your device's camera to check if it's valid and apply the discount.
+              </p>
             </div>
-          </form>
-          
-          <div className="mt-6">
-            <p className="text-sm text-gray-600">
-              Enter the QR code ID to check if it's valid and apply the discount.
-            </p>
           </div>
         </>
+      ) : showScanner ? (
+        <div className="space-y-4">
+          <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
+            <Camera size={24} className="mr-2 text-green-600" />
+            Scan QR Code
+          </h2>
+          
+          <div id="qr-reader" className="w-full max-w-sm mx-auto"></div>
+          
+          <button
+            onClick={resetValidation}
+            className="w-full bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-md transition duration-300"
+          >
+            Cancel Scanning
+          </button>
+        </div>
       ) : (
         <div className="text-center">
           {validationResult.isValid ? (
