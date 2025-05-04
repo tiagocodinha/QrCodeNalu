@@ -11,45 +11,43 @@ interface QrCodeDisplayProps {
 
 const QrCodeDisplay: React.FC<QrCodeDisplayProps> = ({ qrCode, onReset }) => {
   const downloadQrCode = () => {
-    // Create a canvas element to draw the QR code
     const canvas = document.createElement('canvas');
-    const size = 300; // Size of QR code
-    canvas.width = size;
-    canvas.height = size;
-    const ctx = canvas.getContext('2d');
+    const qrCodeElement = document.querySelector('.qrcode');
     
-    if (!ctx) {
-      console.error('Canvas context not available');
+    if (!qrCodeElement) {
+      console.error('QR code element not found');
       return;
     }
     
-    // Draw white background
-    ctx.fillStyle = '#FFFFFF';
-    ctx.fillRect(0, 0, size, size);
-    
-    // Create a temporary div to render the QR code SVG
-    const tempDiv = document.createElement('div');
-    tempDiv.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}">
-      <rect width="100%" height="100%" fill="white"/>
-      ${document.querySelector('svg.qrcode')?.innerHTML || ''}
-    </svg>`;
-    
-    // Convert SVG to image
-    const svgData = new XMLSerializer().serializeToString(tempDiv.querySelector('svg') as Node);
+    const svgData = new XMLSerializer().serializeToString(qrCodeElement);
     const img = new Image();
     const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
     const url = URL.createObjectURL(svgBlob);
     
     img.onload = () => {
-      ctx.drawImage(img, 0, 0, size, size);
-      URL.revokeObjectURL(url);
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
       
-      // Convert canvas to blob and download
+      if (!ctx) {
+        console.error('Canvas context not available');
+        return;
+      }
+      
+      // Draw white background
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      
+      // Draw QR code
+      ctx.drawImage(img, 0, 0);
+      
       canvas.toBlob((blob) => {
         if (blob) {
-          saveAs(blob, `nalu-discount-${qrCode.id.slice(0, 8)}.png`);
+          saveAs(blob, `nalu-discount-${qrCode.id}.png`);
         }
       });
+      
+      URL.revokeObjectURL(url);
     };
     
     img.src = url;

@@ -1,8 +1,9 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useData } from '../contexts/DataContext';
 import { QrCode, CheckCircle, XCircle, Camera, SearchIcon } from 'lucide-react';
 import { Html5QrcodeScanner } from 'html5-qrcode';
 import toast from 'react-hot-toast';
+import { validate as validateUUID } from 'uuid';
 
 const QrCodeValidator: React.FC = () => {
   const [qrCodeId, setQrCodeId] = useState('');
@@ -15,27 +16,57 @@ const QrCodeValidator: React.FC = () => {
   const { validateQrCode, getQrCodeById } = useData();
   const scannerRef = useRef<any>(null);
 
-  const handleValidate = (id: string) => {
-    if (!id.trim()) {
-      toast.error('Please enter a QR code ID');
-      return;
-    }
-    
-    const result = validateQrCode(id.trim());
-    const qrCode = getQrCodeById(id.trim());
-    
-    setValidationResult({
-      ...result,
-      qrCode
-    });
-    
-    // Clear input after validation
-    setQrCodeId('');
-    
-    // Stop scanner if it's running
-    if (scannerRef.current) {
-      scannerRef.current.clear();
-      setShowScanner(false);
+  useEffect(() => {
+    return () => {
+      if (scannerRef.current) {
+        scannerRef.current.clear();
+      }
+    };
+  }, []);
+
+  const handleValidate = async (id: string) => {
+    try {
+      const validId = id.trim();
+      
+      // Basic validation
+      if (!validId) {
+        toast.error('Please enter a QR code ID');
+        return;
+      }
+
+      // UUID format validation
+      if (!validateUUID(validId)) {
+        toast.error('Invalid QR code format');
+        return;
+      }
+
+      // Get QR code details
+      const qrCode = await getQrCodeById(validId);
+      if (!qrCode) {
+        setValidationResult({
+          isValid: false,
+          message: 'QR code not found',
+          qrCode: null
+        });
+        return;
+      }
+
+      // Validate the QR code
+      const result = await validateQrCode(validId);
+      setValidationResult({
+        ...result,
+        qrCode
+      });
+
+      // Clear input and scanner
+      setQrCodeId('');
+      if (scannerRef.current) {
+        scannerRef.current.clear();
+        setShowScanner(false);
+      }
+    } catch (error) {
+      console.error('Validation error:', error);
+      toast.error('Failed to validate QR code');
     }
   };
 
@@ -51,19 +82,37 @@ const QrCodeValidator: React.FC = () => {
     setShowScanner(true);
     setValidationResult(null);
 
-    // Small delay to ensure DOM is ready
     setTimeout(() => {
+      if (scannerRef.current) {
+        scannerRef.current.clear();
+      }
+
       scannerRef.current = new Html5QrcodeScanner(
         "qr-reader",
-        { fps: 10, qrbox: { width: 250, height: 250 } },
+        { 
+          fps: 10,
+          qrbox: { width: 250, height: 250 },
+          aspectRatio: 1.0,
+          showTorchButtonIfSupported: true
+        },
         false
       );
 
-      scannerRef.current.render((decodedText: string) => {
-        handleValidate(decodedText);
-      }, (error: any) => {
-        console.error(error);
-      });
+      scannerRef.current.render(
+        async (decodedText: string) => {
+          // Stop scanning once we get a result
+          if (scannerRef.current) {
+            scannerRef.current.pause();
+          }
+
+          // Process the scanned QR code
+          await handleValidate(decodedText);
+        },
+        (error: any) => {
+          // Ignore scanning errors
+          console.debug('QR Scan error:', error);
+        }
+      );
     }, 100);
   };
 
@@ -111,12 +160,6 @@ const QrCodeValidator: React.FC = () => {
                 </button>
               </div>
             </form>
-            
-            <div className="mt-6">
-              <p className="text-sm text-gray-600">
-                Enter the QR code ID or scan it using your device's camera to check if it's valid and apply the discount.
-              </p>
-            </div>
           </div>
         </>
       ) : showScanner ? (
@@ -144,8 +187,8 @@ const QrCodeValidator: React.FC = () => {
               {validationResult.qrCode && (
                 <div className="bg-gray-50 p-4 rounded-lg text-left mt-4">
                   <p><span className="font-medium">Name:</span> {validationResult.qrCode.name}</p>
-                  <p><span className="font-medium">Contact:</span> {validationResult.qrCode.contact}</p>
-                  <p><span className="font-medium">Created:</span> {new Date(validationResult.qrCode.createdAt).toLocaleString()}</p>
+                  <p><span className="font-medium">Contact:</span> {validationResult.qrCode.phone}</p>
+                  <p><span className="font-medium">Created:</span> {new Date(validationResult.qrCode.created_at).toLocaleString()}</p>
                   <p><span className="font-medium">Validated:</span> {new Date().toLocaleString()}</p>
                 </div>
               )}
@@ -157,10 +200,10 @@ const QrCodeValidator: React.FC = () => {
               {validationResult.qrCode && (
                 <div className="bg-gray-50 p-4 rounded-lg text-left mt-4">
                   <p><span className="font-medium">Name:</span> {validationResult.qrCode.name}</p>
-                  <p><span className="font-medium">Contact:</span> {validationResult.qrCode.contact}</p>
-                  <p><span className="font-medium">Created:</span> {new Date(validationResult.qrCode.createdAt).toLocaleString()}</p>
-                  {validationResult.qrCode.usedAt && (
-                    <p><span className="font-medium">Used:</span> {new Date(validationResult.qrCode.usedAt).toLocaleString()}</p>
+                  <p><span className="font-medium">Contact:</span> {validationResult.qrCode.phone}</p>
+                  <p><span className="font-medium">Created:</span> {new Date(validationResult.qrCode.created_at).toLocaleString()}</p>
+                  {validationResult.qrCode.used_at && (
+                    <p><span className="font-medium">Used:</span> {new Date(validationResult.qrCode.used_at).toLocaleString()}</p>
                   )}
                 </div>
               )}

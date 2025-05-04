@@ -1,5 +1,5 @@
 import React, { createContext, useState, useContext, useEffect, ReactNode } from 'react';
-import { v4 as uuidv4 } from 'uuid';
+import { v4 as uuidv4, validate as validateUUID } from 'uuid';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
 
@@ -99,6 +99,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const validateQrCode = async (id: string): Promise<{ isValid: boolean; message: string }> => {
     try {
+      if (!id || !validateUUID(id)) {
+        return { isValid: false, message: 'Invalid QR code format' };
+      }
+
       // First check if the QR code exists and its status
       const { data: qrCode, error: fetchError } = await supabase
         .from('qr_codes')
@@ -106,7 +110,12 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         .eq('id', id)
         .single();
 
-      if (fetchError || !qrCode) {
+      if (fetchError) {
+        console.error('Fetch error:', fetchError);
+        return { isValid: false, message: 'QR code not found' };
+      }
+
+      if (!qrCode) {
         return { isValid: false, message: 'QR code not found' };
       }
 
@@ -114,38 +123,44 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         return { isValid: false, message: 'QR code has already been used' };
       }
 
-      // Mark as used
-      const { error: updateError } = await supabase
-        .from('qr_codes')
-        .update({
-          is_used: true,
-          used_at: new Date().toISOString()
-        })
-        .eq('id', id);
+      // Mark as used if authenticated
+      if (supabase.auth.getSession()) {
+        const { error: updateError } = await supabase
+          .from('qr_codes')
+          .update({
+            is_used: true,
+            used_at: new Date().toISOString()
+          })
+          .eq('id', id);
 
-      if (updateError) {
-        throw updateError;
+        if (updateError) {
+          console.error('Update error:', updateError);
+          return { isValid: false, message: 'Error updating QR code' };
+        }
+
+        // Update local state
+        setQrCodes(prev =>
+          prev.map(code =>
+            code.id === id
+              ? { ...code, is_used: true, used_at: new Date().toISOString() }
+              : code
+          )
+        );
       }
-
-      // Update local state
-      setQrCodes(prev =>
-        prev.map(code =>
-          code.id === id
-            ? { ...code, is_used: true, used_at: new Date().toISOString() }
-            : code
-        )
-      );
 
       return { isValid: true, message: 'Valid - discount applied' };
     } catch (error) {
       console.error('Error validating QR code:', error);
-      toast.error('Failed to validate QR code');
       return { isValid: false, message: 'Error validating QR code' };
     }
   };
 
   const getQrCodeById = async (id: string): Promise<QrCode | undefined> => {
     try {
+      if (!id || !validateUUID(id)) {
+        throw new Error('Invalid QR code format');
+      }
+
       const { data, error } = await supabase
         .from('qr_codes')
         .select('*')
